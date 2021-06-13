@@ -13,8 +13,6 @@ Adafruit_VS1053_FilePlayer player = Adafruit_VS1053_FilePlayer(SHIELD_RESET, SHI
 
 #define MAXTEMPO 1   // 14 = 350 BPM 16th note
 #define MINTEMPO 111 // 45 BPM 16th note
-#define MAXADC  1023 // max ADC value
-#define VOLUME 18    // Master volume
 
   float x = 0.1f;
   float y = 0.1f;
@@ -23,7 +21,6 @@ Adafruit_VS1053_FilePlayer player = Adafruit_VS1053_FilePlayer(SHIELD_RESET, SHI
   float e = 0.05f;
   float u = 0.0f;
 
-  uint8_t xout = 0;
   uint8_t delay_ms = 0;
 
 void setup() {
@@ -55,17 +52,16 @@ void loop() {
   y = k * ny + nx + a - u;      
   u = 1.0f / (1.0f + expf(-ny/e));
             
-  xout = 64.0f + (128.0f * x);
+  uint8_t xout = 64.0f + (128.0f * x);
 
   uint8_t poly = xout%6;
-
-  uint8_t prog = xout; 
+  uint8_t prog = xout;
+  
   if (prog == 19) prog = 0; // replace church organ to grand piano
   if (prog == 78) prog = 77; // replace whistle to shakuhachi
 
   uint8_t vol = 32 + (xout/2);
   uint8_t note = 24 + (xout/2);
-
   uint8_t pan = 64.0f + (80.0f * x);
 
   note_on(poly, prog & 123, note & 127, vol & 127);

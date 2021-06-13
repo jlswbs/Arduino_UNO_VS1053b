@@ -1,4 +1,4 @@
-// 3D Lorenz attractor music //
+// Tinkerbell fractal map music //
 
 #include <SPI.h>
 #include "Adafruit_VS1053.h"
@@ -14,9 +14,12 @@ Adafruit_VS1053_FilePlayer player = Adafruit_VS1053_FilePlayer(SHIELD_RESET, SHI
 #define MAXTEMPO 1   // 14 = 350 BPM 16th note
 #define MINTEMPO 111 // 45 BPM 16th note
 
-  float x = 0.5f;
-  float y = 0.5f;
-  float z = -1.0f;
+  float x = 0.1f;
+  float y = 0.0f;
+  float a = 0.9f;
+  float b = 0.6013f;
+  float c = 2.0f;
+  float d = 0.5f;
 
   uint8_t delay_ms = 0;
 
@@ -42,31 +45,28 @@ void setup() {
 
 void loop() {
 
-  float oldx = x;
-  float oldy = y;
-  float oldz = z;
+  float nx = x;
+  float ny = y;
   
-  x = oldx*oldy-oldz;
-  y = oldx;
-  z = oldy;
+  x = powf(nx,2.0f) - powf(ny,2.0f) + a * nx + b * ny;
+  y = c * nx * ny - c * nx + d * ny;
             
-  uint8_t xout = 64.0f + (47.0f * x);
-  uint8_t yout = 64.0f + (47.0f * y);
-  uint8_t zout = 64.0f + (47.0f * z);
+  uint8_t xout = 92.0f + (73.0f * x);
+  uint8_t yout = 35.0f + (59.0f * y);
 
   uint8_t poly = yout%6;
-  uint8_t prog = zout;
+  uint8_t prog = xout;
   
   if (prog == 19) prog = 0; // replace church organ to grand piano
   if (prog == 78) prog = 77; // replace whistle to shakuhachi
 
   uint8_t vol = 32 + (yout/2);
   uint8_t note = 24 + (xout/2);
-  uint8_t pan = 64.0f + (27.0f * z);
+  uint8_t pan = 92.0f + (40.0f * x);
 
   note_on(poly, prog & 123, note & 127, vol & 127);
   
-  uint8_t drum = map(zout, 0, 127, 27, 50); // note 35-81 drum kit
+  uint8_t drum = map(yout, 0, 127, 27, 50); // note 35-81 drum kit
 
   note_on(9, prog & 123, drum & 127, vol & 127);
 
