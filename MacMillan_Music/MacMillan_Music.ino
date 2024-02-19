@@ -1,43 +1,70 @@
 // MacMillan fractal map music //
 
 #include <SPI.h>
-#include "Adafruit_VS1053.h"
 
-#define SHIELD_RESET  8  // VS1053 reset pin (unused!)
-#define SHIELD_CS     6  // VS1053 chip select pin (output)
-#define SHIELD_DCS    7  // VS1053 Data/command select pin (output)
-#define DREQ          2  // VS1053 Data request, ideally an Interrupt pinc
-#define CARDCS        9  // Card chip select pin
+#define MP3_XCS   6
+#define MP3_XDCS  7
+#define MP3_DREQ  2
+#define MP3_RST   8
 
-Adafruit_VS1053_FilePlayer player = Adafruit_VS1053_FilePlayer(SHIELD_RESET, SHIELD_CS, SHIELD_DCS, DREQ, CARDCS);
+//VS10xx SCI Registers
+#define SCI_MODE        0x00
+#define SCI_STATUS      0x01
+#define SCI_BASS        0x02
+#define SCI_CLOCKF      0x03
+#define SCI_DECODE_TIME 0x04
+#define SCI_AUDATA      0x05
+#define SCI_WRAM        0x06
+#define SCI_WRAMADDR    0x07
+#define SCI_HDAT0       0x08
+#define SCI_HDAT1       0x09
+#define SCI_AIADDR      0x0A
+#define SCI_VOL         0x0B
+#define SCI_AICTRL0     0x0C
+#define SCI_AICTRL1     0x0D
+#define SCI_AICTRL2     0x0E
+#define SCI_AICTRL3     0x0F
 
-#define MAXTEMPO 1   // 14 = 350 BPM 16th note
-#define MINTEMPO 111 // 45 BPM 16th note
+#define BPM 120
 
   float x = 0.1f;
   float y = 0.1f;
   float m = 1.6f;
   float e = 0.5f;
 
-  uint8_t delay_ms = 0;
-
 void setup() {
   
-  player.begin();
+  pinMode(MP3_RST, OUTPUT);
+  pinMode(MP3_DREQ, INPUT);
+  pinMode(MP3_XCS, OUTPUT);
+  pinMode(MP3_XDCS, OUTPUT);
+ 
+  SPI.begin();
+
+  SPI.setClockDivider(SPI_CLOCK_DIV16); // SPI speed 1MHz (16MHz / 16 = 1MHz)
+  SPI.transfer(0xFF);
+
+  digitalWrite(MP3_RST, HIGH);
+  digitalWrite(MP3_XCS, HIGH);
+  digitalWrite(MP3_XDCS, HIGH);
   
   load_code();
 
-  player.sciWrite(VS1053_REG_VOLUME, 0x3F3F); // left, right volume 0xFE-0x0
-  player.sciWrite(VS1053_REG_BASS, 0x0000);   // bass/treble control
+  WriteRegister(SCI_CLOCKF, 0x8BE8);  // set multiplier to 3.5x
+  WriteRegister(SCI_VOL, 0x3F3F);     // left, right volume 0xFE-0x0
+  WriteRegister(SCI_BASS, 0x0000);    // bass, treble control
+  
+  SPI.setClockDivider(SPI_CLOCK_DIV4); // set SPI speed 4MHz (16MHz / 4 = 4MHz)
 
-  uint8_t room = 0;
+  uint8_t room = 0;   // reverb type
+  uint8_t rval = 127; // reverb value
 
-  reverb(0, room, 96);
-  reverb(1, room, 96);
-  reverb(2, room, 96);
-  reverb(3, room, 96);
-  reverb(4, room, 96);
-  reverb(5, room, 96);
+  reverb(0, room, rval);
+  reverb(1, room, rval);
+  reverb(2, room, rval);
+  reverb(3, room, rval);
+  reverb(4, room, rval);
+  reverb(5, room, rval);
  
 }
 
@@ -55,8 +82,8 @@ void loop() {
   uint8_t poly = yout%6;
   uint8_t prog = xout;
   
-  if (prog == 19) prog = 0; // replace church organ to grand piano
-  if (prog == 78) prog = 77; // replace whistle to shakuhachi
+  if (prog == 19) prog = 0;   // replace church organ to grand piano
+  if (prog == 78) prog = 77;  // replace whistle to shakuhachi
 
   uint8_t vol = 32 + (yout/2);
   uint8_t note = 24 + (xout/2);
@@ -68,9 +95,8 @@ void loop() {
 
   note_on(9, prog & 123, drum & 127, vol & 127);
 
-  delay_ms = MINTEMPO;
-
-  delay (delay_ms);
+  int tempo = 60000 / BPM;
+  delay(tempo / 4);
   
   uint8_t rel_off = yout%8;
   
@@ -81,13 +107,26 @@ void loop() {
   if (rel_off == 4) {all_sound_off(4); panning(4, pan & 127);}
   if (rel_off == 5) {all_sound_off(5); panning(5, pan & 127);}
 
-  delay (delay_ms);
+  delay(tempo / 4);
+
+}
+
+void WriteRegister(char address, int data){
+  
+  while(!digitalRead(MP3_DREQ));
+  digitalWrite(MP3_XCS, LOW);
+  SPI.transfer(0x02);
+  SPI.transfer(address);
+  SPI.transfer((data >> 8) & 0xFF);
+  SPI.transfer(data & 0xFF);
+  while(!digitalRead(MP3_DREQ));
+  digitalWrite(MP3_XCS, HIGH);
 
 }
 
 void note_on(byte chan, byte inst, byte note, byte vol){
 
-  player.sciWrite (VS1053_REG_MODE, 0x0c00);
+  WriteRegister(SCI_MODE, 0x0c00);
 
   SPI.transfer(0xC0 | chan);
   SPI.transfer(0x00);
@@ -105,7 +144,7 @@ void note_on(byte chan, byte inst, byte note, byte vol){
 
 void note_off(byte chan, byte note){
 
-  player.sciWrite (VS1053_REG_MODE, 0x0c00);
+  WriteRegister(SCI_MODE, 0x0c00);
 
   SPI.transfer(0x80 | chan);
   SPI.transfer(0x00);
@@ -118,7 +157,7 @@ void note_off(byte chan, byte note){
 
 void reverb(byte chan, byte typ, byte rev){
   
-  player.sciWrite (VS1053_REG_MODE, 0x0c00);
+  WriteRegister(SCI_MODE, 0x0c00);
 
   SPI.transfer(0xB0 | chan);
   SPI.transfer(0x00);
@@ -138,7 +177,7 @@ void reverb(byte chan, byte typ, byte rev){
 
 void panning(byte chan, byte pan){
   
-  player.sciWrite (VS1053_REG_MODE, 0x0c00);
+  WriteRegister(SCI_MODE, 0x0c00);
 
   SPI.transfer(0xB0 | chan);
   SPI.transfer(0x00);
@@ -151,7 +190,7 @@ void panning(byte chan, byte pan){
 
 void all_sound_off(byte chan){
   
-  player.sciWrite (VS1053_REG_MODE, 0x0c00);
+  WriteRegister(SCI_MODE, 0x0c00);
 
   SPI.transfer(0xB0 | chan);
   SPI.transfer(0x00);
@@ -164,7 +203,7 @@ void all_sound_off(byte chan){
 
 void pitch(byte chan, byte pitch){
 
-  player.sciWrite (VS1053_REG_MODE, 0x0c00);
+  WriteRegister(SCI_MODE, 0x0c00);
 
   SPI.transfer(0xE0 | chan);
   SPI.transfer(0x00);
@@ -173,7 +212,9 @@ void pitch(byte chan, byte pitch){
 
 }
 
-const static word plugin[1039] PROGMEM = { /* Compressed plugin */
+#define PLUGIN_SIZE 1039
+
+const static word plugin[PLUGIN_SIZE] PROGMEM = { /* Compressed plugin */
   0x0007,0x0001, /*copy 1*/
   0x8050,
   0x0006,0x03f0, /*copy 1008*/
@@ -316,8 +357,6 @@ const static word plugin[1039] PROGMEM = { /* Compressed plugin */
   0x0006,0x0002, /*copy 2*/
   0x2a00,0x1a0e,0x000a,0x0001,0x0050,};
 
-#define PLUGIN_SIZE 1039
-
 void load_code(void){
   
   int i = 0;
@@ -329,15 +368,16 @@ void load_code(void){
       n &= 0x7FFF;
       val = pgm_read_word (&(plugin[i++]));
       while (n--) {
-        player.sciWrite (addr , val);       
+        WriteRegister(addr , val);       
       }
     } 
     else {
       while (n--) {
         val = pgm_read_word (&(plugin[i++]));
-        player.sciWrite (addr , val);        
+        WriteRegister(addr , val);        
       }
     }
   }
   return;
+
 }

@@ -1,4 +1,4 @@
-// Tinkerbell fractal map music //
+// Poly Logistic equation music //
 
 #include <SPI.h>
 
@@ -25,14 +25,14 @@
 #define SCI_AICTRL2     0x0E
 #define SCI_AICTRL3     0x0F
 
-#define BPM 120
+#define BPM   120
+#define POLY  6   // note polyphony
 
+  float r = 3.678f;
   float x = 0.1f;
-  float y = 0.0f;
-  float a = 0.9f;
-  float b = 0.6013f;
-  float c = 2.0f;
-  float d = 0.5f;
+  uint8_t note[POLY];
+  uint8_t pan[POLY];
+  bool drumon = true;
 
 void setup() {
   
@@ -67,49 +67,51 @@ void setup() {
   reverb(3, room, rval);
   reverb(4, room, rval);
   reverb(5, room, rval);
- 
+  
 }
 
 void loop() {
-
-  float nx = x;
-  float ny = y;
   
-  x = powf(nx,2.0f) - powf(ny,2.0f) + a * nx + b * ny;
-  y = c * nx * ny - c * nx + d * ny;
-            
-  uint8_t xout = 92.0f + (73.0f * x);
-  uint8_t yout = 35.0f + (59.0f * y);
-
-  uint8_t poly = yout%6;
-  uint8_t prog = xout;
+  for (int i = 0; i < POLY; i++){
   
-  if (prog == 19) prog = 0;   // replace church organ to grand piano
-  if (prog == 78) prog = 77;  // replace whistle to shakuhachi
-
-  uint8_t vol = 32 + (yout/2);
-  uint8_t note = 24 + (xout/2);
-  uint8_t pan = 92.0f + (40.0f * x);
-
-  note_on(poly, prog & 123, note & 127, vol & 127);
+    float nx = x;
+    x = r * nx * (1.0f - nx);          
+    note[i] = 127.0f * x;
+    
+  }
   
-  uint8_t drum = map(yout, 0, 127, 27, 50); // note 35-81 drum kit
+  for (int i = 0; i < POLY; i++){
+  
+    uint8_t notes = map(note[i], 0, 127, 12, 72); // quantise note C1-c4
+    uint8_t prog = map(note[i], 0, 127, note[3], note[5]);
+    if (prog >= 18 && prog <= 23) prog = 0;  // replace some instruments to grand piano
+    uint8_t vol = map(note[i], 0, 127, 32, 96);
+    note_on(i, prog & 123, notes & 127, vol & 127);
+    pan[i] = 48 + map(note[i], 0, 127, -32, 32);
 
-  note_on(9, prog & 123, drum & 127, vol & 127);
-
+  }
+  
+  uint8_t drum = map(note[0], 0, 127, 35, 66); // note 27-87 drum kit
+  uint8_t vold = map(note[4], 0, 127, 56, 112);
+  uint8_t volb = map(note[2], 0, 127, 48, 96);
+  
+  note_on(9, 0, drum & 127, vold & 127);
+  if (drumon == true) note_on(9, 0, 35, volb & 127);
+  drumon = !drumon;
+  
   int tempo = 60000 / BPM;
   delay(tempo / 4);
   
-  uint8_t rel_off = yout%8;
+  uint8_t rel_off = note[1]%8;
   
-  if (rel_off == 0) {all_sound_off(0); panning(0, pan & 127);}
-  if (rel_off == 1) {all_sound_off(1); panning(1, pan & 127);}
-  if (rel_off == 2) {all_sound_off(2); panning(2, pan & 127);}
-  if (rel_off == 3) {all_sound_off(3); panning(3, pan & 127);}
-  if (rel_off == 4) {all_sound_off(4); panning(4, pan & 127);}
-  if (rel_off == 5) {all_sound_off(5); panning(5, pan & 127);}
+  if (rel_off == 0) {all_sound_off(0); panning(0, pan[0] & 127);}
+  if (rel_off == 1) {all_sound_off(1); panning(1, pan[1] & 127);}
+  if (rel_off == 2) {all_sound_off(2); panning(2, pan[2] & 127);}
+  if (rel_off == 3) {all_sound_off(3); panning(3, pan[3] & 127);}
+  if (rel_off == 4) {all_sound_off(4); panning(4, pan[4] & 127);}
+  if (rel_off == 5) {all_sound_off(5); panning(5, pan[5] & 127);}
 
-  delay (tempo / 4);
+  delay(tempo / 4);
 
 }
 
