@@ -25,8 +25,13 @@
 #define SCI_AICTRL2     0x0E
 #define SCI_AICTRL3     0x0F
 
+#define BPM     120
+#define TICK    (15624L*60) / BPM / 2
+#define GRAIN   32
+
   int positions;
   int grains;
+  int samplerate;
 
 const uint8_t samples[] PROGMEM = {
 0x49,0x44,0x33,0x04,0x00,0x00,0x00,0x00,0x01,0x54,0x54,0x43,0x4F,0x4E,0x00,0x00,
@@ -1463,7 +1468,25 @@ const uint8_t samples[] PROGMEM = {
 
 };
 
+ISR(TIMER1_COMPA_vect) {
+  
+  samplerate = random(4410, 44100);
+  grains = GRAIN * random(1, 128);
+  positions = (255 * random(1, (sizeof(samples)-256)/256)) - grains;
+
+}
+
 void setup(){
+
+  noInterrupts();
+  TCCR1A = 0;
+  TCCR1B = 0;
+  TCNT1 = 0;
+  OCR1A = TICK;
+  TCCR1B |= (1 << WGM12);
+  TCCR1B |= (1 << CS12) | (1 << CS10);
+  TIMSK1 |= (1 << OCIE1A);
+  interrupts();
   
   pinMode(MP3_RST, OUTPUT);
   pinMode(MP3_DREQ, INPUT);
@@ -1480,7 +1503,7 @@ void setup(){
   digitalWrite(MP3_XDCS, HIGH);
   
   WriteRegister(SCI_CLOCKF, 0x6000);    // set multiplier to 3.0x
-  WriteRegister(SCI_VOL, 0x5F5F);       // set volume
+  WriteRegister(SCI_VOL, 0x4F4F);       // set volume
   
   SPI.setClockDivider(SPI_CLOCK_DIV4);  // set SPI speed 4MHz (16MHz / 4 = 4MHz)
 
@@ -1488,13 +1511,13 @@ void setup(){
 
 void loop(){
 
-  grains = 32 * random(1, 128);
-  positions = (255 * random(1, (sizeof(samples)-256)/256)) - grains;
-  WriteRegister(SCI_AUDATA, random(4410, 44100));
- 
-  for (int i = positions; i < grains+positions; i++){
+  for (int i = positions; i < grains+positions; i++) {
 
-    while(!digitalRead(MP3_DREQ)){}
+    while(!digitalRead(MP3_DREQ)){
+      
+      WriteRegister(SCI_AUDATA, samplerate);
+      
+    }
 
     digitalWrite(MP3_XDCS, LOW);
     uint8_t p = pgm_read_byte (samples+i);

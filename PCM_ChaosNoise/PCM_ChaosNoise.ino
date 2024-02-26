@@ -1,4 +1,4 @@
-// VS1053b PCM mode stereo 8bit 22050 Hz - Karplus-Strong //
+// VS1053b PCM mode stereo 8bit 22050 Hz - Chaotic noise + samplerate effect //
 
 #include <SPI.h>
 
@@ -25,56 +25,24 @@
 #define SCI_AICTRL2 0x0E
 #define SCI_AICTRL3 0x0F
 
-#define SIZE    256
-#define OFFSET  32
 #define BPM     120
 #define TICK    (15624L*60) / BPM / 2
 
-uint8_t r, l;
+  int8_t r, l;
+  int samplerate = 110;
+  float prevChaosRandVal = 0.5f;
 
-class Synth {
-public:
+float chaos_rand(float range) {
 
-  int out = 0;
-  int last = 0;
-  int curr = 0;
-  uint8_t delaymem[SIZE];
-  uint8_t locat = 0;
-  uint8_t bound = SIZE;
-  int accum = 0;
-  int lowpass = 0;
-
-	int calculate();
-  void trigger();
-
-};
-
-int Synth::calculate() {
-
-  delaymem[locat++] = out;
-  if (locat >= bound) locat = 0;
-  curr = delaymem[locat];
-  out = accum >> lowpass;
-  accum = accum - out + ((last >> 1) + (curr >> 1));
-  last = curr;
-
-  return out;
+  float chaosRandVal = range * sinf(3.1459f * prevChaosRandVal);
+  prevChaosRandVal = chaosRandVal;
+  return chaosRandVal * 0.5f + range * 0.5f;
 
 }
-
-void Synth::trigger() {
-  
-  for (int i = 0; i < SIZE; i++) delaymem[i] = random();
-
-}
-
-Synth karplus;
 
 ISR(TIMER1_COMPA_vect) {
   
-  karplus.trigger();
-  karplus.bound = random(OFFSET, SIZE);
-  karplus.lowpass = random(0, 4);
+  samplerate = 110 * random(1, 70);
 
 }
 
@@ -105,19 +73,23 @@ void setup() {
   digitalWrite(MP3_XDCS, HIGH);
 
   WriteRegister(SCI_CLOCKF, 0x6000);    // set multiplier to 3.0x
-  WriteRegister(SCI_VOL, 0x4F4F);       // set volume
+  WriteRegister(SCI_VOL, 0x5F5F);       // set volume
 
   SPI.setClockDivider(SPI_CLOCK_DIV4);  // set SPI speed 4MHz (16MHz / 4 = 4MHz)
 
   load_header();
+
+  WriteRegister(SCI_AUDATA, samplerate);
   
 }
 
 void loop() {
 
-  while (!digitalRead(MP3_DREQ)) {}
+  WriteRegister(SCI_AUDATA, samplerate);
 
-  l = karplus.calculate();
+  while(!digitalRead(MP3_DREQ)){}
+
+  l = chaos_rand(255);
   r = -l;
 
   digitalWrite(MP3_XDCS, LOW);

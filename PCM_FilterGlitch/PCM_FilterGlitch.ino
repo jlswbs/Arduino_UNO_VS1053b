@@ -1,4 +1,4 @@
-// VS1053b PCM mode stereo 8bit 22050 Hz - Karplus-Strong //
+// VS1053b PCM mode stereo 8bit 22050 Hz - IIR filter glitch //
 
 #include <SPI.h>
 
@@ -25,56 +25,20 @@
 #define SCI_AICTRL2 0x0E
 #define SCI_AICTRL3 0x0F
 
-#define SIZE    256
-#define OFFSET  32
 #define BPM     120
 #define TICK    (15624L*60) / BPM / 2
 
 uint8_t r, l;
 
-class Synth {
-public:
-
-  int out = 0;
-  int last = 0;
-  int curr = 0;
-  uint8_t delaymem[SIZE];
-  uint8_t locat = 0;
-  uint8_t bound = SIZE;
-  int accum = 0;
-  int lowpass = 0;
-
-	int calculate();
-  void trigger();
-
-};
-
-int Synth::calculate() {
-
-  delaymem[locat++] = out;
-  if (locat >= bound) locat = 0;
-  curr = delaymem[locat];
-  out = accum >> lowpass;
-  accum = accum - out + ((last >> 1) + (curr >> 1));
-  last = curr;
-
-  return out;
-
-}
-
-void Synth::trigger() {
-  
-  for (int i = 0; i < SIZE; i++) delaymem[i] = random();
-
-}
-
-Synth karplus;
+long A = 0;
+long y[3] = {0, 0x1209, 0};
+int ratecnt = 0;
+int tune = 0;
 
 ISR(TIMER1_COMPA_vect) {
-  
-  karplus.trigger();
-  karplus.bound = random(OFFSET, SIZE);
-  karplus.lowpass = random(0, 4);
+
+  tune = rand() % 8;
+  A = 0x7e66 + random(-1024, 1024);
 
 }
 
@@ -105,7 +69,7 @@ void setup() {
   digitalWrite(MP3_XDCS, HIGH);
 
   WriteRegister(SCI_CLOCKF, 0x6000);    // set multiplier to 3.0x
-  WriteRegister(SCI_VOL, 0x4F4F);       // set volume
+  WriteRegister(SCI_VOL, 0x5F5F);       // set volume
 
   SPI.setClockDivider(SPI_CLOCK_DIV4);  // set SPI speed 4MHz (16MHz / 4 = 4MHz)
 
@@ -115,9 +79,18 @@ void setup() {
 
 void loop() {
 
-  while (!digitalRead(MP3_DREQ)) {}
+  while(!digitalRead(MP3_DREQ)){}
 
-  l = karplus.calculate();
+  if (ratecnt-- == 0) {
+
+    ratecnt = tune;
+    y[0] = ((A * y[1]) >> 14) - y[2];
+	  y[2] = y[1];
+	  y[1] = y[0];
+
+  }
+
+  l = 128 + (y[0] >> 8);
   r = -l;
 
   digitalWrite(MP3_XDCS, LOW);

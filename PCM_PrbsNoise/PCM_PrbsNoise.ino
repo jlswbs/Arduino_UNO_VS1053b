@@ -1,4 +1,4 @@
-// VS1053b PCM mode stereo 8bit 22050 Hz - Karplus-Strong //
+// VS1053b PCM mode stereo 8bit 22050 Hz - Noise base Pseudo-Random Bit Sequence //
 
 #include <SPI.h>
 
@@ -25,70 +25,39 @@
 #define SCI_AICTRL2 0x0E
 #define SCI_AICTRL3 0x0F
 
-#define SIZE    256
-#define OFFSET  32
-#define BPM     120
-#define TICK    (15624L*60) / BPM / 2
-
-uint8_t r, l;
+uint8_t l, r;
 
 class Synth {
 public:
 
-  int out = 0;
-  int last = 0;
-  int curr = 0;
-  uint8_t delaymem[SIZE];
-  uint8_t locat = 0;
-  uint8_t bound = SIZE;
-  int accum = 0;
-  int lowpass = 0;
+  unsigned long int reg = 0x55aa55aaL;
 
-	int calculate();
-  void trigger();
+	unsigned long int calculate();
 
 };
 
-int Synth::calculate() {
+unsigned long int Synth::calculate() {
 
-  delaymem[locat++] = out;
-  if (locat >= bound) locat = 0;
-  curr = delaymem[locat];
-  out = accum >> lowpass;
-  accum = accum - out + ((last >> 1) + (curr >> 1));
-  last = curr;
-
-  return out;
-
-}
-
-void Synth::trigger() {
+  unsigned long int newr;
+  unsigned char lobit;
+  unsigned char b31, b29, b25, b24;
   
-  for (int i = 0; i < SIZE; i++) delaymem[i] = random();
-
-}
-
-Synth karplus;
-
-ISR(TIMER1_COMPA_vect) {
+  b31 = (reg & (1L << 31)) >> 31;
+  b29 = (reg & (1L << 29)) >> 29;
+  b25 = (reg & (1L << 25)) >> 25;
+  b24 = (reg & (1L << 24)) >> 24;
   
-  karplus.trigger();
-  karplus.bound = random(OFFSET, SIZE);
-  karplus.lowpass = random(0, 4);
+  lobit = b31 ^ b29 ^ b25 ^ b24;
+  newr = (reg << 1) | lobit;
+  reg = newr;
+
+  return reg;
 
 }
+
+Synth noise;
 
 void setup() {
-
-  noInterrupts();
-  TCCR1A = 0;
-  TCCR1B = 0;
-  TCNT1 = 0;
-  OCR1A = TICK;
-  TCCR1B |= (1 << WGM12);
-  TCCR1B |= (1 << CS12) | (1 << CS10);
-  TIMSK1 |= (1 << OCIE1A);
-  interrupts();
 
   pinMode(MP3_RST, OUTPUT);
   pinMode(MP3_DREQ, INPUT);
@@ -105,7 +74,7 @@ void setup() {
   digitalWrite(MP3_XDCS, HIGH);
 
   WriteRegister(SCI_CLOCKF, 0x6000);    // set multiplier to 3.0x
-  WriteRegister(SCI_VOL, 0x4F4F);       // set volume
+  WriteRegister(SCI_VOL, 0x5F5F);       // set volume
 
   SPI.setClockDivider(SPI_CLOCK_DIV4);  // set SPI speed 4MHz (16MHz / 4 = 4MHz)
 
@@ -115,9 +84,9 @@ void setup() {
 
 void loop() {
 
-  while (!digitalRead(MP3_DREQ)) {}
+  uint8_t out = noise.calculate();
 
-  l = karplus.calculate();
+  l = out;
   r = -l;
 
   digitalWrite(MP3_XDCS, LOW);
@@ -167,7 +136,7 @@ void load_header() {
     digitalWrite(MP3_XDCS, LOW);
     SPI.transfer(p);
     digitalWrite(MP3_XDCS, HIGH);
-
+    
   }
 
 }
